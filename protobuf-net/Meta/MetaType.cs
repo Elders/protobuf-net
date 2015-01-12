@@ -15,6 +15,7 @@ using IKVM.Reflection.Emit;
 using System.Reflection;
 #if FEAT_COMPILER
 using System.Reflection.Emit;
+using System.Collections.Generic;
 #endif
 #endif
 
@@ -1379,7 +1380,26 @@ namespace ProtoBuf.Meta
         {
             return AddField(fieldNumber, memberName, itemType, defaultType, null);
         }
-        
+        private IEnumerable<MemberInfo> FindMembers(Type type, string memberName)
+        {
+            if (type == typeof(object) || type == null)
+                yield break;
+            MemberInfo[] props = type.GetMember(memberName,
+                Helpers.IsEnum(type) ?
+                BindingFlags.Static | BindingFlags.Public
+                :
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            foreach (MemberInfo item in props)
+            {
+                if (item.DeclaringType == type)
+                    yield return item;
+            }
+            IEnumerable<MemberInfo> baseP = FindMembers(type.BaseType, memberName);
+            foreach (MemberInfo item in baseP)
+            {
+                yield return item;
+            }
+        }
         private ValueMember AddField(int fieldNumber, string memberName, Type itemType, Type defaultType, object defaultValue)
         {
             MemberInfo mi = null;
@@ -1387,7 +1407,7 @@ namespace ProtoBuf.Meta
             mi = Helpers.IsEnum(type) ? type.GetTypeInfo().GetDeclaredField(memberName) : Helpers.GetInstanceMember(type.GetTypeInfo(), memberName);
 
 #else
-            MemberInfo[] members = type.GetMember(memberName, Helpers.IsEnum(type) ? BindingFlags.Static | BindingFlags.Public : BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            MemberInfo[] members = System.Linq.Enumerable.ToArray(FindMembers(type, memberName));
             if(members != null && members.Length == 1) mi = members[0];
 #endif
             if (mi == null) throw new ArgumentException("Unable to determine member: " + memberName, "memberName");
